@@ -1,219 +1,350 @@
 import React, { useState, useMemo, useEffect } from 'react';
 
-// Import Child Components
+// Import Child Components (ensure these files exist and are correct)
 import ScheduleDisplay from './ScheduleDisplay';
 import ExamTimetableDisplay from './ExamTimetableDisplay';
 import WellbeingTips from './WellbeingTips';
+import ProgressSummary from './ProgressSummary'; // Import ProgressSummary
 
-// Import Scheduling Logic
+// Import Scheduling Logic (ensure this file exists and is correct)
 import { generateSchedule } from './generateSchedule';
 
 // --- localStorage Keys ---
 const LS_KEYS = {
-    SUBJECTS: 'revisionPlanner_subjects',
+    PLANNER_ENTRIES: 'revisionPlanner_plannerEntries', // Key for the detailed entries
     TIMESLOTS: 'revisionPlanner_timeSlots',
     START_DATE: 'revisionPlanner_startDate',
-    END_DATE: 'revisionPlanner_endDate'
-};
-
-// --- Static Data ---
-const subjectOptions = [
-    'Arabic 1st Language', 'Arabic 2nd Language', 'Art', 'Biology', 'Business Studies',
-    'Chemistry', 'Computer Science', 'Design and Technology', 'Economics',
-    'English 1st Language', 'English 2nd Language', 'English Literature',
-    'Geography', 'ICT', 'Mathematics', 'Physical Education', 'Physics'
-];
-
-// Simple Exam Dates Map (Subject Name -> First Exam Date YYYY-MM-DD)
-// Used ONLY for prioritisation logic in generateSchedule
-const examDatesForPrioritisation = { // Using base names from subjectOptions
-    'Arabic 2nd Language': '2025-04-14',
-    'English 2nd Language': '2025-04-14',
-    'ICT': '2025-04-15',
-    'Art': '2025-04-22',
-    'Chemistry': '2025-04-30',
-    'Mathematics': '2025-05-02',
-    'Biology': '2025-05-06',
-    'Geography': '2025-05-06',
-    'English 1st Language': '2025-05-08',
-    'Physics': '2025-05-09',
-    'Computer Science': '2025-05-12',
-    'English Literature': '2025-05-12',
-    'Design and Technology': '2025-05-13',
-    'Arabic 1st Language': '2025-05-13',
-    'Business Studies': '2025-05-16',
-    'Physical Education': '2025-05-20',
-    'Economics': '2025-05-23'
-    // Add other subjects from subjectOptions here if they have exams
-};
-
-// Full Detailed Exam Timetable (for display purposes)
-// Derived from user-provided timetable text (assuming 2025)
-const fullExamTimetable = [ // Using detailed names from original timetable
-    { dateString: 'Monday 13th April', dateISO: '2025-04-14', subject: 'Arabic 2nd Language Orals', paper: '', startTime: 'Various', finishTime: '', duration: '', location: 'U9' },
-    { dateString: 'Monday 13th April', dateISO: '2025-04-14', subject: 'English 2nd Language Orals', paper: '', startTime: 'Various', finishTime: '', duration: '', location: 'OM1' },
-    { dateString: 'Tuesday 15th April', dateISO: '2025-04-15', subject: 'ICT', paper: 'Paper 2 ( Practical )', startTime: '8:30', finishTime: '10:45', duration: '2:15', location: 'G14' },
-    { dateString: 'Thursday 17th April', dateISO: '2025-04-17', subject: 'ICT', paper: 'Paper 3 ( Practical )', startTime: '8:30', finishTime: '10:45', duration: '2:15', location: 'G14' },
-    { dateString: 'Tuesday 22nd April', dateISO: '2025-04-22', subject: 'Art', paper: '1', startTime: '8:30', finishTime: '10:30', duration: '2:00', location: 'Art' },
-    { dateString: 'Tuesday 22nd April', dateISO: '2025-04-22', subject: 'Art', paper: '1', startTime: '11:00', finishTime: '13:00', duration: '2:00', location: 'Art' },
-    { dateString: 'Wednesday 23rd April', dateISO: '2025-04-23', subject: 'Art', paper: '1', startTime: '8:30', finishTime: '11:30', duration: '3:00', location: 'Art' },
-    { dateString: 'Wednesday 23rd April', dateISO: '2025-04-23', subject: 'Art', paper: '1', startTime: '11:00', finishTime: '13:00', duration: '2:00', location: 'Art' },
-    { dateString: 'Monday 28th April', dateISO: '2025-04-28', subject: 'Arabic 2nd Language', paper: '2', startTime: '13:00', finishTime: '14:00', duration: '1:00', location: 'Auditorium' },
-    { dateString: 'Wednesday 30th April', dateISO: '2025-04-30', subject: 'Chemistry Extended', paper: '4', startTime: '9:00', finishTime: '10:15', duration: '1:15', location: 'Auditorium' },
-    { dateString: 'Wednesday 30th April', dateISO: '2025-04-30', subject: 'Chemistry Core', paper: '3', startTime: '9:00', finishTime: '10:15', duration: '1:15', location: 'Auditorium' },
-    { dateString: 'Friday 2nd May', dateISO: '2025-05-02', subject: 'Mathematics Extended', paper: '2', startTime: '13:00', finishTime: '15:00', duration: '2:00', location: 'Auditorium' },
-    { dateString: 'Friday 2nd May', dateISO: '2025-05-02', subject: 'Mathematics Core', paper: '1', startTime: '13:00', finishTime: '14:30', duration: '1:30', location: 'Auditorium' },
-    { dateString: 'Tuesday 6th May', dateISO: '2025-05-06', subject: 'Biology Extended', paper: '4', startTime: '9:00', finishTime: '10:15', duration: '1:15', location: 'Auditorium' },
-    { dateString: 'Tuesday 6th May', dateISO: '2025-05-06', subject: 'Biology Core', paper: '3', startTime: '9:00', finishTime: '10:15', duration: '1:15', location: 'Auditorium' },
-    { dateString: 'Tuesday 6th May', dateISO: '2025-05-06', subject: 'Geography', paper: '1', startTime: '13:00', finishTime: '14:45', duration: '1:45', location: 'Auditorium' },
-    { dateString: 'Wednesday 7th May', dateISO: '2025-05-07', subject: 'Mathematics Extended', paper: '4', startTime: '13:00', finishTime: '15:00', duration: '2:00', location: 'Auditorium' },
-    { dateString: 'Wednesday 7th May', dateISO: '2025-05-07', subject: 'Mathematics Core', paper: '3', startTime: '13:00', finishTime: '14:30', duration: '1:30', location: 'Auditorium' },
-    { dateString: 'Thursday 8th May', dateISO: '2025-05-08', subject: 'English 1st Language', paper: '1', startTime: '9:00', finishTime: '11:00', duration: '2:00', location: 'Auditorium' },
-    { dateString: 'Thursday 8th May', dateISO: '2025-05-08', subject: 'English 2nd Language', paper: '1', startTime: '9:00', finishTime: '11:00', duration: '2:00', location: 'Auditorium' },
-    { dateString: 'Thursday 8th May', dateISO: '2025-05-08', subject: 'ICT', paper: '1', startTime: '13:00', finishTime: '14:30', duration: '1:30', location: 'Auditorium' },
-    { dateString: 'Friday 9th May', dateISO: '2025-05-09', subject: 'Physics Extended', paper: '4', startTime: '9:00', finishTime: '10:15', duration: '1:15', location: 'Auditorium' },
-    { dateString: 'Friday 9th May', dateISO: '2025-05-09', subject: 'Physics Core', paper: '3', startTime: '9:00', finishTime: '10:15', duration: '1:15', location: 'Auditorium' },
-    { dateString: 'Monday 12th May', dateISO: '2025-05-12', subject: 'Computer Science', paper: '1', startTime: '9:00', finishTime: '10:45', duration: '1:45', location: 'Auditorium' },
-    { dateString: 'Monday 12th May', dateISO: '2025-05-12', subject: 'English Literature', paper: '1', startTime: '13:00', finishTime: '14:30', duration: '1:30', location: 'Auditorium' },
-    { dateString: 'Tuesday 13th May', dateISO: '2025-05-13', subject: 'Biology Core and Extended', paper: '6', startTime: '9:00', finishTime: '10:00', duration: '1:00', location: 'Auditorium' },
-    { dateString: 'Tuesday 13th May', dateISO: '2025-05-13', subject: 'Design and Technology', paper: '1', startTime: '11:00', finishTime: '12:15', duration: '1:15', location: 'Gallery' },
-    { dateString: 'Tuesday 13th May', dateISO: '2025-05-13', subject: 'Arabic 1st Language', paper: '1', startTime: '13:00', finishTime: '15:00', duration: '2:00', location: 'Gallery' },
-    { dateString: 'Wednesday 14th May', dateISO: '2025-05-14', subject: 'English 1st Language', paper: '2', startTime: '9:00', finishTime: '11:00', duration: '2:00', location: 'Auditorium' },
-    { dateString: 'Wednesday 14th May', dateISO: '2025-05-14', subject: 'English Literature', paper: '3', startTime: '13:00', finishTime: '13:45', duration: '0:45', location: 'Auditorium' },
-    { dateString: 'Thursday 15th May', dateISO: '2025-05-15', subject: 'Chemistry Extended/Core', paper: '6', startTime: '9:00', finishTime: '10:00', duration: '1:00', location: 'Auditorium' },
-    { dateString: 'Thursday 15th May', dateISO: '2025-05-15', subject: 'Geography', paper: '2', startTime: '13:00', finishTime: '14:30', duration: '1:30', location: 'Auditorium' },
-    { dateString: 'Friday 16th May', dateISO: '2025-05-16', subject: 'Business Studies', paper: '1', startTime: '9:00', finishTime: '10:30', duration: '1:30', location: 'Auditorium' },
-    { dateString: 'Monday 19th May', dateISO: '2025-05-19', subject: 'Business Studies', paper: '2', startTime: '9:00', finishTime: '10:30', duration: '1:30', location: 'Auditorium' },
-    { dateString: 'Tuesday 20th May', dateISO: '2025-05-20', subject: 'Physics Extended/Core', paper: '6', startTime: '9:00', finishTime: '10:00', duration: '1:00', location: 'Auditorium' },
-    { dateString: 'Tuesday 20th May', dateISO: '2025-05-20', subject: 'Geography', paper: '4', startTime: '11:00', finishTime: '12:30', duration: '1:30', location: 'Gallery' },
-    { dateString: 'Tuesday 20th May', dateISO: '2025-05-20', subject: 'Physical Education', paper: '1', startTime: '13:00', finishTime: '14:45', duration: '1:45', location: 'Gallery' },
-    { dateString: 'Wednesday 21st May', dateISO: '2025-05-21', subject: 'Computer Science', paper: '2', startTime: '9:00', finishTime: '10:45', duration: '1:45', location: 'Auditorium' },
-    { dateString: 'Wednesday 21st May', dateISO: '2025-05-21', subject: 'Arabic 1st Language', paper: '2', startTime: '12:00', finishTime: '14:00', duration: '2:00', location: 'Auditorium' },
-    { dateString: 'Wednesday 21st May', dateISO: '2025-05-21', subject: 'Arabic 2nd Language - Listening', paper: '1', startTime: '12:00', finishTime: '12:50', duration: '0:50', location: 'OM3' },
-    { dateString: 'Wednesday 21st May', dateISO: '2025-05-21', subject: 'Arabic 2nd Language', paper: '4', startTime: '12:50', finishTime: '13:50', duration: '1:00', location: 'OM3' },
-    { dateString: 'Thursday 22nd May', dateISO: '2025-05-22', subject: 'English 2nd Language - Listening', paper: '2', startTime: '9:00', finishTime: '9:50', duration: '0:50', location: 'OM3' },
-    { dateString: 'Friday 23rd May', dateISO: '2025-05-23', subject: 'Economics', paper: '2', startTime: '8:00', finishTime: '10:15', duration: '2:15', location: 'Auditorium' },
-    { dateString: 'Wednesday 4th June', dateISO: '2025-06-04', subject: 'Physics Extended', paper: '2', startTime: '8:30', finishTime: '9:15', duration: '0:45', location: 'Auditorium' },
-    { dateString: 'Wednesday 4th June', dateISO: '2025-06-04', subject: 'Physics Core', paper: '1', startTime: '8:30', finishTime: '9:15', duration: '0:45', location: 'Auditorium' },
-    { dateString: 'Thursday 5th June', dateISO: '2025-06-05', subject: 'Design and Technology', paper: '3', startTime: '12:00', finishTime: '13:00', duration: '1:00', location: 'Auditorium' },
-    { dateString: 'Thursday 5th June', dateISO: '2025-06-05', subject: 'Economics', paper: '1', startTime: '8:30', finishTime: '9:15', duration: '0:45', location: 'Auditorium' },
-    { dateString: 'Tuesday 10th June', dateISO: '2025-06-10', subject: 'Chemistry Extended', paper: '2', startTime: '8:30', finishTime: '9:15', duration: '0:45', location: 'Auditorium' },
-    { dateString: 'Tuesday 10th June', dateISO: '2025-06-10', subject: 'Chemistry Core', paper: '1', startTime: '8:30', finishTime: '9:15', duration: '0:45', location: 'Auditorium' },
-    { dateString: 'Wednesday 11th June', dateISO: '2025-06-11', subject: 'Biology Extended', paper: '2', startTime: '8:30', finishTime: '9:15', duration: '0:45', location: 'Auditorium' },
-    { dateString: 'Wednesday 11th June', dateISO: '2025-06-11', subject: 'Biology Core', paper: '1', startTime: '8:30', finishTime: '9:15', duration: '0:45', location: 'Auditorium' }
-];
-
-// --- Helper Function to Get Base Subject Name ---
-const getSubjectBaseName = (detailedSubjectName) => {
-    if (!detailedSubjectName) return '';
-    if (subjectOptions.includes(detailedSubjectName)) return detailedSubjectName;
-    const baseName = detailedSubjectName
-        .replace(/ Extended\/Core/i, '')
-        .replace(/ Core and Extended/i, '')
-        .replace(/ Extended/i, '')
-        .replace(/ Core/i, '')
-        .replace(/ Orals/i, '')
-        .replace(/ - Listening/i, '')
-        .replace(/ Paper \d+/i, '')
-        .replace(/ \( Practical \)/i, '')
-        .trim();
-    if (subjectOptions.includes(baseName)) return baseName;
-    const foundOption = subjectOptions.find(option => baseName.startsWith(option) || detailedSubjectName.startsWith(option));
-    return foundOption || baseName;
+    END_DATE: 'revisionPlanner_endDate',
+    COMPLETION: 'revisionPlanner_completionStatus' // Key for completion tracking
 };
 
 // --- React Component ---
 function App() {
     // --- State Variables ---
-    const [subject, setSubject] = useState(subjectOptions[0]);
-    const [rag, setRag] = useState('red');
-    const [subjects, setSubjects] = useState(() => {
-        const saved = localStorage.getItem(LS_KEYS.SUBJECTS);
-        try { return saved ? (JSON.parse(saved) || []) : []; } catch { return []; }
+
+    // NEW State: Array to hold all planner entries (subject/paper/topic/rag/exam details)
+    const [plannerEntries, setPlannerEntries] = useState(() => {
+        const savedEntries = localStorage.getItem(LS_KEYS.PLANNER_ENTRIES);
+        if (savedEntries) {
+            try {
+                const parsed = JSON.parse(savedEntries);
+                // Basic validation: ensure it's an array
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (e) {
+                console.error("Failed to parse saved planner entries from localStorage:", e);
+                return []; // Return default empty array if parsing fails
+            }
+        }
+        return []; // Default empty array if nothing in localStorage
     });
-    const [day, setDay] = useState('Sunday'); // Default day set to Sunday
+
+    // State for the NEW input form fields used to add a planner entry
+    const [subjectNameInput, setSubjectNameInput] = useState('');
+    const [paperOrTopicInput, setPaperOrTopicInput] = useState('');
+    const [ragInput, setRagInput] = useState('red'); // Default RAG for new entries
+    const [examDateInput, setExamDateInput] = useState(''); // Initialize as empty YYYY-MM-DD
+    const [examStartTimeInput, setExamStartTimeInput] = useState(''); // Initialize as empty HH:MM
+    const [examEndTimeInput, setExamEndTimeInput] = useState(''); // Initialize as empty HH:MM
+    const [examLocationInput, setExamLocationInput] = useState('');
+
+    // State for Weekly Availability (including fixed breaks) - Load initial state from localStorage
+    const [day, setDay] = useState('Sunday'); // Default day is Sunday
     const [startTime, setStartTime] = useState('16:00');
     const [endTime, setEndTime] = useState('17:00');
     const [slotType, setSlotType] = useState('revision'); // 'revision' or 'fixed_break'
     const [weeklyTimeSlots, setWeeklyTimeSlots] = useState(() => {
          const saved = localStorage.getItem(LS_KEYS.TIMESLOTS);
-         try { return saved ? (JSON.parse(saved) || []) : []; } catch { return []; }
+         try {
+             const parsed = JSON.parse(saved);
+             return Array.isArray(parsed) ? parsed : [];
+         } catch (e) {
+             console.error("Failed to parse saved time slots from localStorage:", e);
+             return [];
+         }
     });
-    const defaultStartDate = '2025-04-20';
-    const defaultEndDate = '2025-06-11';
+
+    // State for Revision Period - Load initial state from localStorage
+    const defaultStartDate = '2025-04-20'; // Example default start date
+    const defaultEndDate = '2025-06-11';   // Example default end date
     const [startDate, setStartDate] = useState(() => localStorage.getItem(LS_KEYS.START_DATE) || defaultStartDate);
     const [endDate, setEndDate] = useState(() => localStorage.getItem(LS_KEYS.END_DATE) || defaultEndDate);
+
+    // State for Generated Schedule - Unchanged
     const [scheduleResult, setScheduleResult] = useState({ schedule: [], warnings: [] });
     const [isGenerating, setIsGenerating] = useState(false);
 
-    // --- Effects to SAVE state ---
-    useEffect(() => { localStorage.setItem(LS_KEYS.SUBJECTS, JSON.stringify(subjects)); }, [subjects]);
-    useEffect(() => { localStorage.setItem(LS_KEYS.TIMESLOTS, JSON.stringify(weeklyTimeSlots)); }, [weeklyTimeSlots]);
-    useEffect(() => { localStorage.setItem(LS_KEYS.START_DATE, startDate); }, [startDate]);
-    useEffect(() => { localStorage.setItem(LS_KEYS.END_DATE, endDate); }, [endDate]);
+    // State for Completion Status
+    const [completionStatus, setCompletionStatus] = useState(() => {
+        const savedStatus = localStorage.getItem(LS_KEYS.COMPLETION);
+        if (savedStatus) {
+            try {
+                const parsed = JSON.parse(savedStatus);
+                // Basic validation: ensure it's an object
+                return typeof parsed === 'object' && parsed !== null ? parsed : {};
+            } catch (e) {
+                console.error("Failed to parse saved completion status:", e);
+                return {}; // Return default empty object if parsing fails
+            }
+        }
+        return {}; // Default empty object
+    });
+
+
+    // --- Effects to SAVE state changes to localStorage ---
+    // Save plannerEntries whenever it changes
+    useEffect(() => {
+        localStorage.setItem(LS_KEYS.PLANNER_ENTRIES, JSON.stringify(plannerEntries));
+    }, [plannerEntries]);
+
+    // Save weeklyTimeSlots whenever it changes
+    useEffect(() => {
+        localStorage.setItem(LS_KEYS.TIMESLOTS, JSON.stringify(weeklyTimeSlots));
+    }, [weeklyTimeSlots]);
+
+    // Save startDate whenever it changes
+    useEffect(() => {
+        localStorage.setItem(LS_KEYS.START_DATE, startDate);
+    }, [startDate]);
+
+    // Save endDate whenever it changes
+    useEffect(() => {
+        localStorage.setItem(LS_KEYS.END_DATE, endDate);
+    }, [endDate]);
+
+    // Save completionStatus whenever it changes
+    useEffect(() => {
+        localStorage.setItem(LS_KEYS.COMPLETION, JSON.stringify(completionStatus));
+    }, [completionStatus]);
+
 
     // --- Event Handlers ---
-    const addSubject = () => {
-        const baseSubjectName = getSubjectBaseName(subject);
-        if (!baseSubjectName || subjects.find(s => s.name === baseSubjectName)) return;
-        setSubjects(prev => [...prev, { name: baseSubjectName, rag }]);
+
+    // Handler to add a subject/paper/topic entry
+    const handleAddPlannerEntry = () => {
+        // Validation: Subject, Paper/Topic, and Exam Date are required
+        if (!subjectNameInput.trim() || !paperOrTopicInput.trim()) {
+            alert("Please enter both a Subject Name and a Paper/Topic Name.");
+            return;
+        }
+        if (!examDateInput) { // Check if exam date is entered
+            alert("Please enter the Exam Date for this subject/paper.\n(This is needed to know when to stop scheduling revision).");
+            return;
+        }
+        // Optional validation for start/end time if date is entered
+        if (examDateInput && examStartTimeInput && examEndTimeInput && examStartTimeInput >= examEndTimeInput) {
+             alert("Exam End Time must be after Exam Start Time.");
+             return;
+        }
+
+        // Create the new entry object
+        const newEntry = {
+            id: Date.now(), // Simple unique ID based on timestamp
+            subjectName: subjectNameInput.trim(),
+            paperOrTopic: paperOrTopicInput.trim(),
+            rag: ragInput,
+            // examDetails will always exist now, as date is required
+            examDetails: {
+                date: examDateInput, // Store as YYYY-MM-DD string
+                startTime: examStartTimeInput || null, // Store HH:MM string or null
+                finishTime: examEndTimeInput || null, // Store HH:MM string or null
+                location: examLocationInput.trim() || null // Store string or null
+            }
+        };
+
+        // Update state using functional update to ensure atomicity
+        setPlannerEntries(prevEntries => [...prevEntries, newEntry]);
+
+        // Clear input fields after adding (keeping subject name might be useful)
+        // setSubjectNameInput(''); // Optional: clear subject name too
+        setPaperOrTopicInput('');
+        setRagInput('red'); // Reset RAG to default
+        setExamDateInput('');
+        setExamStartTimeInput('');
+        setExamEndTimeInput('');
+        setExamLocationInput('');
     };
-    const removeSubject = (indexToRemove) => {
-        setSubjects(prev => prev.filter((_, index) => index !== indexToRemove));
+
+    // Handler to remove a planner entry by ID
+    const handleRemovePlannerEntry = (idToRemove) => {
+        setPlannerEntries(prevEntries => prevEntries.filter(entry => entry.id !== idToRemove));
     };
+
+    // Handler for adding weekly slots
     const addTimeSlot = () => {
         const isValidTime = (time) => time && time.match(/^\d{2}:\d{2}$/);
         if (!isValidTime(startTime) || !isValidTime(endTime) || startTime >= endTime) {
-             console.warn("Invalid time slot input."); return;
+             console.warn("Invalid time slot input: Ensure HH:MM format and end time is after start time.");
+             // Consider adding a user-visible error message state here
+             return;
         }
+        // Add the type ('revision' or 'fixed_break') to the slot object
         setWeeklyTimeSlots(prev => [...prev, { day, startTime, endTime, type: slotType }]);
     };
+
+    // Handler for removing weekly slots
     const removeTimeSlot = (indexToRemove) => {
          setWeeklyTimeSlots(prev => prev.filter((_, index) => index !== indexToRemove));
     };
 
-    // --- Filter Exam Timetable ---
-    const relevantExamTimetable = useMemo(() => {
-        const selectedBaseNamesSet = new Set(subjects.map(s => s.name));
-        return fullExamTimetable.filter(exam => {
-            const examBaseName = getSubjectBaseName(exam.subject);
-            return selectedBaseNamesSet.has(examBaseName);
+    // Handler to Toggle Completion Status
+    const handleToggleCompletion = (itemId) => {
+        setCompletionStatus(prevStatus => ({
+            ...prevStatus,
+            [itemId]: !prevStatus[itemId] // Toggle the boolean value
+        }));
+    };
+
+    // --- Filter Exam Timetable (Derived from plannerEntries) ---
+    // This creates the list needed for the ExamTimetableDisplay component
+    const userExamTimetable = useMemo(() => {
+        return plannerEntries
+            .filter(entry => entry.examDetails && entry.examDetails.date) // Filter for entries with an exam date
+            .map(entry => ({ // Map to the format ExamTimetableDisplay expects
+                dateString: entry.examDetails.date, // Consider formatting later if needed
+                dateISO: entry.examDetails.date,
+                subject: `${entry.subjectName} - ${entry.paperOrTopic}`, // Combine names for display
+                paper: entry.paperOrTopic, // Keep separate
+                startTime: entry.examDetails.startTime || 'N/A',
+                finishTime: entry.examDetails.finishTime || 'N/A',
+                duration: '-', // Duration wasn't input, could calculate later
+                location: entry.examDetails.location || 'N/A'
+            }))
+            .sort((a, b) => { // Sort by date then time
+                const dateComparison = a.dateISO.localeCompare(b.dateISO);
+                if (dateComparison !== 0) return dateComparison;
+                // Handle 'N/A' or null times during sort
+                const timeA = a.startTime === 'N/A' ? '' : a.startTime;
+                const timeB = b.startTime === 'N/A' ? '' : b.startTime;
+                return timeA.localeCompare(timeB);
+            });
+    }, [plannerEntries]); // Dependency: recalculate when 'plannerEntries' state changes
+
+
+    // --- Calculate Progress Stats ---
+    const progressStats = useMemo(() => {
+        const stats = {}; // Use an object keyed by entry id for easier lookup
+
+        // Initialize stats for each entry
+        plannerEntries.forEach(entry => {
+            // Use entry.id which is guaranteed unique
+            stats[entry.id] = {
+                id: entry.id, // Keep id for keying later if needed
+                subjectName: entry.subjectName,
+                paperOrTopic: entry.paperOrTopic,
+                totalMinutes: 0,
+                completedMinutes: 0,
+            };
         });
-    }, [subjects]);
+
+        // Iterate through the generated schedule (only study items)
+        (scheduleResult.schedule || [])
+            .filter(item => item.type === 'study')
+            .forEach(item => {
+                // Find the corresponding planner entry for this study block
+                // Task format is "Revise: SubjectName - PaperOrTopic"
+                const taskParts = item.task.replace(/^Revise:\s*/, '').split(' - ');
+                if (taskParts.length < 2) return; // Skip if format is unexpected
+                const subjectName = taskParts[0];
+                const paperOrTopic = taskParts.slice(1).join(' - '); // Handle cases where paper/topic has '-'
+
+                // Find the FIRST matching entry (in case of duplicates, though UI should prevent)
+                const matchingEntry = plannerEntries.find(
+                    entry => entry.subjectName === subjectName && entry.paperOrTopic === paperOrTopic
+                );
+
+                if (matchingEntry && stats[matchingEntry.id]) {
+                    const duration = item.duration || 0; // Duration should be present
+                    stats[matchingEntry.id].totalMinutes += duration;
+
+                    // Check completion status using the generated item ID
+                    // Ensure ID format matches the one generated in ScheduleDisplay
+                    const itemId = `${item.date}_${item.startTime}_${item.task}`;
+                    if (completionStatus[itemId]) {
+                        stats[matchingEntry.id].completedMinutes += duration;
+                    }
+                } else {
+                    // console.warn(`Could not find matching planner entry for scheduled task: ${item.task}`);
+                }
+            });
+
+        // Convert stats object to an array and calculate percentage
+        return Object.values(stats).map(stat => ({
+            ...stat,
+            percentage: stat.totalMinutes > 0
+                ? Math.round((stat.completedMinutes / stat.totalMinutes) * 100)
+                : 0
+        })).sort((a,b) => a.subjectName.localeCompare(b.subjectName) || a.paperOrTopic.localeCompare(b.paperOrTopic)); // Sort alphabetically
+
+    }, [plannerEntries, scheduleResult.schedule, completionStatus]); // Dependencies
+
 
     // --- Schedule Generation Handler ---
     const handleGenerateSchedule = () => {
-        if (subjects.length === 0 || weeklyTimeSlots.length === 0 || !startDate || !endDate) {
-            setScheduleResult({ schedule: [], warnings: ["Please select subjects, add time slots, and set dates before generating."] }); return;
+        // Basic check for necessary inputs before starting generation
+        if (plannerEntries.length === 0 || weeklyTimeSlots.length === 0 || !startDate || !endDate) {
+            setScheduleResult({ schedule: [], warnings: ["Please add subjects/papers, time slots, and set dates before generating."] });
+            return;
         }
-        setIsGenerating(true); setScheduleResult({ schedule: [], warnings: [] });
+
+        setIsGenerating(true); // Show loading indicator
+        setScheduleResult({ schedule: [], warnings: [] }); // Clear previous results
+
+        // Use setTimeout to allow UI update before potentially long calculation
         setTimeout(() => {
             try {
-                const result = generateSchedule( subjects, weeklyTimeSlots, startDate, endDate, examDatesForPrioritisation, relevantExamTimetable );
-                setScheduleResult(result);
-            } catch (error) { console.error("Error generating schedule:", error); setScheduleResult({ schedule: [], warnings: ["An unexpected error occurred during schedule generation. Check console for details."] });
-            } finally { setIsGenerating(false); }
-        }, 50);
+                // Call the main generation function from the imported module
+                // Ensure generateSchedule is updated to handle plannerEntries correctly
+                const result = generateSchedule(
+                    plannerEntries, // Pass the new detailed entries array
+                    weeklyTimeSlots,
+                    startDate,
+                    endDate
+                    // No longer pass separate exam data
+                );
+                setScheduleResult(result); // Update state with the generated schedule and any warnings
+            } catch (error) {
+                // Catch unexpected errors during generation
+                console.error("Error generating schedule:", error);
+                setScheduleResult({ schedule: [], warnings: ["An unexpected error occurred during schedule generation. Check console for details."] });
+            } finally {
+                setIsGenerating(false); // Hide loading indicator regardless of success/failure
+            }
+        }, 50); // Small delay
     };
 
     // --- Helper for Date Input ---
     const formatDateForInput = (dateStr) => {
-        if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+        // Check if the format is already YYYY-MM-DD
+        if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+            return dateStr;
+        }
+        // Attempt conversion only if needed (less robust for other formats)
         try {
-            const date = new Date(dateStr + 'T00:00:00'); if (isNaN(date)) return '';
-            const year = date.getFullYear(); const month = String(date.getMonth() + 1).padStart(2, '0'); const day = String(date.getDate()).padStart(2, '0');
+            const date = new Date(dateStr + 'T00:00:00'); // Ensure parsing as local date
+            if (isNaN(date)) return ''; // Return empty if invalid date string
+            // Format to YYYY-MM-DD
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
             return `${year}-${month}-${day}`;
-        } catch { return ''; }
+        } catch {
+            return ''; // Return empty on error
+        }
      };
+
 
     // --- JSX ---
     return (
+        // Main container div
         <div style={{ padding: '2rem', fontFamily: 'Arial, sans-serif', maxWidth: '1200px', margin: 'auto' }}>
+            {/* Header */}
             <header style={{ textAlign: 'center', marginBottom: '2rem' }}>
-                <h1 style={{ color: '#333' }}>📅 IGCSE Dynamic Revision Planner</h1>
+                <h1 style={{ color: '#333' }}>📅 Universal Revision Planner</h1>
             </header>
 
-            <main style={{ display: 'grid', gridTemplateColumns: 'minmax(350px, 1fr) minmax(400px, 1.5fr)', gap: '2rem' }}>
+            {/* Main content area using CSS Grid */}
+            <main style={{ display: 'grid', gridTemplateColumns: 'minmax(400px, 1.5fr) minmax(400px, 1.5fr)', gap: '2rem' }}>
+
                 {/* --- Column 1: Inputs & Controls --- */}
                 <section>
                     {/* Step 1 Card: Revision Period */}
@@ -229,36 +360,79 @@ function App() {
                         </div>
                     </div>
 
-                    {/* Step 2 Card: Subjects & Confidence */}
+                    {/* Step 2 Card: Add Subject/Paper/Topic */}
                     <div style={styles.card}>
-                        <h2>Step 2: Subjects & Confidence</h2>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-                            <select value={subject} onChange={(e) => setSubject(e.target.value)} style={{...styles.input, flexGrow: 2}}>
-                                {subjectOptions.map((subj, index) => (<option key={index} value={subj}>{subj}</option>))}
+                        <h2>Step 2: Add Subject / Paper / Topic</h2>
+                        <p style={styles.infoTextSmall}>Add each subject paper or distinct topic you need to revise. Exam Date is required for planning.</p>
+                        {/* Grid layout for input form */}
+                        <div style={styles.inputGrid}>
+                             <label htmlFor="subjectName" style={styles.label}>Subject Name*:</label>
+                             <input type="text" id="subjectName" value={subjectNameInput} onChange={(e) => setSubjectNameInput(e.target.value)} style={styles.input} placeholder="e.g., A-Level Maths" required />
+
+                             <label htmlFor="paperTopic" style={styles.label}>Paper / Topic*:</label>
+                             <input type="text" id="paperTopic" value={paperOrTopicInput} onChange={(e) => setPaperOrTopicInput(e.target.value)} style={styles.input} placeholder="e.g., Paper 1 Pure" required />
+
+                             <label htmlFor="rag" style={styles.label}>Confidence (RAG)*:</label>
+                             <select id="rag" value={ragInput} onChange={(e) => setRagInput(e.target.value)} style={styles.input} required>
+                                <option value="red">🔴 Red (Need Focus)</option>
+                                <option value="amber">🟠 Amber (Okay-ish)</option>
+                                <option value="green">🟢 Green (Confident)</option>
                             </select>
-                            <select value={rag} onChange={(e) => setRag(e.target.value)} style={styles.input}>
-                                <option value="red">🔴 Red</option>
-                                <option value="amber">🟠 Amber</option>
-                                <option value="green">🟢 Green</option>
-                            </select>
-                            <button onClick={addSubject} style={styles.buttonPrimary}>Add</button>
+
+                            {/* Exam Date - Now Required */}
+                            <label htmlFor="examDate" style={styles.label}>Exam Date*:</label>
+                            <input
+                                type="date"
+                                id="examDate"
+                                value={examDateInput}
+                                onChange={(e) => setExamDateInput(e.target.value)}
+                                style={styles.input}
+                                required // HTML5 required attribute
+                            />
+
+                            {/* Exam Times - Optional but linked to date */}
+                            <label htmlFor="examStart" style={styles.label}>Exam Start Time:</label>
+                            <input type="time" id="examStart" value={examStartTimeInput} onChange={(e) => setExamStartTimeInput(e.target.value)} style={styles.input} disabled={!examDateInput} />
+
+                            <label htmlFor="examEnd" style={styles.label}>Exam End Time:</label>
+                            <input type="time" id="examEnd" value={examEndTimeInput} onChange={(e) => setExamEndTimeInput(e.target.value)} style={styles.input} disabled={!examDateInput} />
+
+                             {/* Exam Location - Optional */}
+                             <label htmlFor="examLocation" style={styles.label}>Exam Location:</label>
+                             <input type="text" id="examLocation" value={examLocationInput} onChange={(e) => setExamLocationInput(e.target.value)} style={styles.input} placeholder="e.g., Main Hall" disabled={!examDateInput} />
                         </div>
+                        {/* Add Button */}
+                        <div style={{textAlign: 'right', marginTop: '1rem'}}>
+                             <button onClick={handleAddPlannerEntry} style={styles.buttonPrimary}>Add Entry</button>
+                        </div>
+
+                        {/* List of Added Entries */}
+                        <h3 style={{marginTop: '2rem', borderTop: '1px solid #eee', paddingTop: '1rem'}}>Your Subjects & Papers:</h3>
                         <ul style={styles.list}>
-                            {subjects.map((subj, index) => (
-                                <li key={index} style={styles.listItem}>
-                                    <span>{subj.name} ({subj.rag.toUpperCase()})</span>
-                                    <button onClick={() => removeSubject(index)} style={styles.buttonDangerSmall} aria-label={`Remove ${subj.name}`}>X</button>
+                            {plannerEntries.map((entry) => (
+                                <li key={entry.id} style={styles.listItem}>
+                                    {/* Display entry details */}
+                                    <span>
+                                        <strong>{entry.subjectName}</strong> - {entry.paperOrTopic}
+                                        <span style={styles.ragDisplay(entry.rag)}> ({entry.rag.toUpperCase()})</span>
+                                        {/* Display exam date clearly */}
+                                        <span style={styles.examDateDisplay}> - Exam: {entry.examDetails?.date || 'N/A'}</span>
+                                    </span>
+                                    {/* Remove button */}
+                                    <button onClick={() => handleRemovePlannerEntry(entry.id)} style={styles.buttonDangerSmall} aria-label={`Remove ${entry.subjectName} - ${entry.paperOrTopic}`}>X</button>
                                 </li>
                             ))}
                         </ul>
-                         {subjects.length === 0 && <p style={styles.infoTextSmall}>Add the subjects you need to revise.</p>}
+                        {/* Message if list is empty */}
+                        {plannerEntries.length === 0 && <p style={styles.infoTextSmall}>Add the subjects/papers you need to revise using the form above.</p>}
                     </div>
+
 
                     {/* Step 3 Card: Weekly Availability */}
                     <div style={styles.card}>
                         <h2>Step 3: Weekly Availability</h2>
                         <p style={styles.infoTextSmall}>
-                            Map out your typical weekly free time slots here. Select a day, the start and end time of an available period, and specify whether you'll use that time for 'Revision Time' or a 'Fixed Break' (like lunch). The planner will use these recurring weekly slots to build your schedule between your chosen start and end dates.
+                            Map out your typical weekly free time slots. Select a day, the start and end time, and specify if it's for 'Revision Time' or a 'Fixed Break'.
                         </p>
                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem', marginTop: '1rem' }}>
                             <select value={day} onChange={(e) => setDay(e.target.value)} style={{...styles.input, flexBasis: '130px'}} aria-label="Day of week">
@@ -284,7 +458,7 @@ function App() {
                                 </li>
                             ))}
                         </ul>
-                        {weeklyTimeSlots.length === 0 && <p style={styles.infoTextSmall}>Add the times you are free each week for revision or fixed breaks.</p>}
+                        {weeklyTimeSlots.length === 0 && <p style={styles.infoTextSmall}>Add the times you are free each week.</p>}
                     </div>
 
                      {/* Step 4 Card: Generate Button */}
@@ -292,13 +466,13 @@ function App() {
                         <h2>Step 4: Generate Schedule</h2>
                         <button
                             onClick={handleGenerateSchedule}
-                            style={ (subjects.length === 0 || weeklyTimeSlots.length === 0 || !startDate || !endDate || isGenerating) ? styles.buttonSuccessLargeDisabled : styles.buttonSuccessLarge }
-                            disabled={subjects.length === 0 || weeklyTimeSlots.length === 0 || !startDate || !endDate || isGenerating}
+                            style={ (plannerEntries.length === 0 || weeklyTimeSlots.length === 0 || !startDate || !endDate || isGenerating) ? styles.buttonSuccessLargeDisabled : styles.buttonSuccessLarge }
+                            disabled={plannerEntries.length === 0 || weeklyTimeSlots.length === 0 || !startDate || !endDate || isGenerating}
                         >
                             {isGenerating ? 'Generating...' : '✨ Generate My Revision Plan ✨'}
                         </button>
-                        {isGenerating && <p style={styles.infoText}>Please wait, creating your personalised plan...</p>}
-                        {(!isGenerating && (subjects.length === 0 || weeklyTimeSlots.length === 0 || !startDate || !endDate)) &&
+                        {isGenerating && <p style={styles.infoText}>Please wait...</p>}
+                        {(!isGenerating && (plannerEntries.length === 0 || weeklyTimeSlots.length === 0 || !startDate || !endDate)) &&
                             <p style={styles.infoText}>Please complete Steps 1-3 first.</p>
                         }
                     </div>
@@ -311,20 +485,31 @@ function App() {
 
                 {/* --- Column 2: Outputs --- */}
                 <section>
+                     {/* Progress Summary Component */}
+                    {plannerEntries.length > 0 && (
+                         <div style={styles.card}>
+                            <ProgressSummary stats={progressStats} />
+                         </div>
+                    )}
+
                     {/* Generated Schedule Display */}
                     {(scheduleResult.schedule.length > 0 || scheduleResult.warnings.length > 0) && (
                         <div style={styles.card}>
+                            {/* Pass completionStatus and handler down */}
                             <ScheduleDisplay
                                 generatedSchedule={scheduleResult.schedule}
                                 warnings={scheduleResult.warnings}
-                                relevantExams={relevantExamTimetable} // Pass relevant exams here
+                                plannerEntries={plannerEntries} // Pass full entries
+                                completionStatus={completionStatus} // Pass current status
+                                onToggleCompletion={handleToggleCompletion} // Pass handler function
                             />
                         </div>
                     )}
 
                      {/* Detailed Exam Timetable Display */}
                      <div style={styles.card}>
-                         <ExamTimetableDisplay timetable={fullExamTimetable} />
+                         {/* Pass userExamTimetable derived from plannerEntries */}
+                         <ExamTimetableDisplay timetable={userExamTimetable} />
                      </div>
                 </section>
             </main>
@@ -333,20 +518,28 @@ function App() {
 }
 
 // --- Basic Styling ---
+// Includes styles for cards, inputs, buttons, lists, grid etc.
 const styles = {
     card: { marginBottom: '1.5rem', padding: '1.5rem', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#ffffff', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' },
     inputGroup: { marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' },
-    label: { minWidth: '80px', fontWeight: 'bold', flexShrink: 0 },
-    input: { padding: '0.6rem', borderRadius: '4px', border: '1px solid #ccc', flexGrow: 1, minWidth: '80px', fontSize: '0.9rem' }, // Keep flexGrow: 1
+    inputGrid: { display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.8rem 1rem', alignItems: 'center', marginTop: '1rem' },
+    label: { minWidth: '80px', fontWeight: 'bold', textAlign: 'right', paddingRight: '0.5em' }, // Added padding for spacing
+    input: { padding: '0.6rem', borderRadius: '4px', border: '1px solid #ccc', width: '100%', boxSizing: 'border-box', fontSize: '0.9rem' }, // Ensure input takes full grid cell width
     buttonPrimary: { padding: '0.6rem 1rem', cursor: 'pointer', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', fontSize: '0.9rem', whiteSpace: 'nowrap' },
     buttonSuccessLarge: { padding: '0.8rem 1.5rem', fontSize: '1.1rem', cursor: 'pointer', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px', opacity: 1, transition: 'opacity 0.3s ease, background-color 0.3s ease' },
     buttonSuccessLargeDisabled: { padding: '0.8rem 1.5rem', fontSize: '1.1rem', cursor: 'not-allowed', backgroundColor: '#cccccc', color: '#666666', border: 'none', borderRadius: '5px', opacity: 0.6 },
     buttonDangerSmall: { marginLeft: 'auto', padding: '0.2rem 0.5rem', fontSize: '0.8rem', lineHeight: '1', cursor: 'pointer', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '3px', flexShrink: 0 },
-    list: { listStyle: 'none', paddingLeft: 0, marginTop: '1rem', maxHeight: '200px', overflowY: 'auto', border: '1px solid #eee', borderRadius: '4px' },
-    listItem: { marginBottom: '0.5rem', padding: '0.5rem 0.8rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fdfdfd', },
+    list: { listStyle: 'none', paddingLeft: 0, marginTop: '1rem', maxHeight: '250px', overflowY: 'auto', border: '1px solid #eee', borderRadius: '4px', padding: '0.5rem' }, // Increased maxHeight
+    listItem: { marginBottom: '0.5rem', padding: '0.5rem 0.8rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fdfdfd', gap: '0.5rem' }, // Added gap
     infoText: { marginTop: '1rem', fontStyle: 'italic', color: '#555' },
     infoTextSmall: { fontSize: '0.85rem', fontStyle: 'italic', color: '#777', marginTop: '0.5rem', marginBottom: '1rem' }, // Added margin-bottom
-    slotTypeLabel: { marginLeft: '0.5rem', fontSize: '0.85em', fontStyle: 'italic', color: '#6c757d' }
+    slotTypeLabel: { marginLeft: '0.5rem', fontSize: '0.85em', fontStyle: 'italic', color: '#6c757d' },
+    // Style for RAG display in the list
+    ragDisplay: (rag) => ({ display: 'inline-block', marginLeft: '0.5rem', padding: '0.1em 0.4em', fontSize: '0.8em', fontWeight: 'bold', borderRadius: '3px', color: 'white', backgroundColor: rag === 'red' ? '#dc3545' : rag === 'amber' ? '#ffc107' : '#28a745' }),
+    // Style for exam date display in the list
+    examDateDisplay: { marginLeft: '0.5rem', fontSize: '0.85em', color: '#0056b3' } // Blue to indicate exam info
 };
 
 export default App;
+
+
